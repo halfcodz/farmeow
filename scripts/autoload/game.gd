@@ -1,128 +1,118 @@
 extends Node
-## 시뮬레이션을 고정 스텝(20Hz)으로 돌리고, 저장/불러오기를 맡는다.
+## 진행 상태 · 입력 설정 · 저장 · 히트스톱
 
-const SAVE_PATH := "user://farmeow_save.json"
+signal shake(amount: float)
+signal state_changed
 
-var sim: Sim
-var running := false
-var paused := false
-var modal_pause := 0     # 대화창/결과창이 열려 있으면 > 0
-var _acc := 0.0
-var hitstop := 0.0   # 큰 타격 순간 잠깐 멈춤 (손맛)
-var offline_result: Dictionary = {}
+const SAVE := "user://meowmory_save.json"
+
+var max_hp := 5
+var hp := 5
+var orbs := 0
+var orbs_total := 0
+var has_double := false
+var has_dash := false
+var memories: Array = []         # 찾은 기억 번호
+var flags := {}                  # 본 대사 · 연출
+var checkpoint := Vector2.ZERO   # 사당 위치 (월드 px)
+var boss_down := false
+var deaths := 0
+var playtime := 0.0
+var in_dialog := false
+
+var _stop_until := 0
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-
-
-func has_save() -> bool:
-	return FileAccess.file_exists(SAVE_PATH)
-
-
-func save_summary() -> Dictionary:
-	if not has_save(): return {}
-	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
-	var d = JSON.parse_string(f.get_as_text())
-	if typeof(d) != TYPE_DICTIONARY: return {}
-	return {"day": int(d.get("day", 1)), "chapter": int(d.get("chapter", 1)), "difficulty": d.get("difficulty", "normal"),
-		"prestige": int(d.get("prestige", 0)), "playtime": float(d.get("playtime", 0.0))}
-
-
-func start_new(difficulty: String) -> void:
-	sim = Sim.new()
-	sim.new_game(difficulty)
-	_bind()
-	offline_result = {}
-	running = true
-	paused = false
-	modal_pause = 0
-	save_game()
-
-
-func continue_game() -> bool:
-	if not has_save(): return false
-	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
-	var d = JSON.parse_string(f.get_as_text())
-	if typeof(d) != TYPE_DICTIONARY: return false
-	_fix_types(d)
-	sim = Sim.new()
-	sim.load_state(d)
-	_bind()
-	var away := Time.get_unix_time_from_system() - float(d.get("last_saved", Time.get_unix_time_from_system()))
-	offline_result = sim.apply_offline(away) if sim.s.phase == "day" or sim.s.phase == "dawn" or sim.s.phase == "dusk" else {}
-	running = true
-	paused = false
-	modal_pause = 0
-	return true
-
-
-## JSON은 숫자를 전부 float로 돌려주므로 정수여야 하는 키를 되돌린다
-func _fix_types(d: Dictionary) -> void:
-	for k in ["day", "seeds", "fodder", "candy", "prestige", "next_uid", "chapter", "speed"]:
-		if d.has(k): d[k] = int(d[k])
-	for c in d.get("cats", []):
-		for k in ["uid", "rarity", "level", "xp", "lives", "fur", "nurse_cd", "kills", "joined"]:
-			if c.has(k): c[k] = int(c[k])
-	for t in d.get("tiles", []):
-		t.stars = int(t.get("stars", 0))
-	var seen := []
-	for v in d.get("seen_intro", []): seen.append(int(v))
-	d.seen_intro = seen
-
-
-func _bind() -> void:
-	sim.event.connect(_on_sim_event)
-
-
-func _on_sim_event(kind: String, data: Dictionary) -> void:
-	match kind:
-		"save": save_game()
-		"sfx": Sound.play(data.name)
-
-
-func save_game() -> void:
-	if sim == null: return
-	sim.s.last_saved = Time.get_unix_time_from_system()
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	f.store_string(JSON.stringify(sim.s))
-
-
-func delete_save() -> void:
-	if has_save():
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
+	_setup_input()
 
 
 func _process(delta: float) -> void:
-	if not running or sim == null: return
-	if paused or modal_pause > 0: return
-	if hitstop > 0.0:
-		hitstop -= delta
-		return
-	_acc += minf(delta, 0.25) * float(sim.s.speed)
-	var steps := 0
-	while _acc >= Sim.TICK and steps < 80:
-		sim.tick(Sim.TICK)
-		_acc -= Sim.TICK
-		steps += 1
+	if _stop_until > 0 and Time.get_ticks_msec() >= _stop_until:
+		_stop_until = 0
+		Engine.time_scale = 1.0
+	if not get_tree().paused: playtime += delta
 
 
-func set_speed(v: int) -> void:
-	if sim == null: return
-	sim.s.speed = clampi(v, 1, 3)
-	if sim.s.speed == 3 and int(sim.s.day) < 10 and int(sim.s.prestige) == 0:
-		sim.s.speed = 2
-		sim.toast("3배속은 10일째부터 열려요", "warn")
+## 타격 순간 시간을 거의 멈춘다 (손맛)
+func hitstop(sec: float) -> void:
+	Engine.time_scale = 0.03
+	_stop_until = maxi(_stop_until, Time.get_ticks_msec() + int(sec * 1000.0))
 
 
-func cycle_speed() -> void:
-	if sim == null: return
-	var nxt := int(sim.s.speed) + 1
-	if nxt > 3 or (nxt == 3 and int(sim.s.day) < 10 and int(sim.s.prestige) == 0): nxt = 1
-	sim.s.speed = nxt
+func kick(amount: float) -> void:
+	if Settings.shake: shake.emit(amount)
 
 
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_CLOSE_REQUEST:
-		if running: save_game()
-		Settings.save_settings()
+func new_run() -> void:
+	max_hp = 5; hp = 5; orbs = 0; orbs_total = 0
+	has_double = false; has_dash = false
+	memories = []; flags = {}; checkpoint = Vector2.ZERO
+	boss_down = false; deaths = 0; playtime = 0.0
+
+
+func has_save() -> bool:
+	return FileAccess.file_exists(SAVE)
+
+
+func save_game() -> void:
+	var d := {"max_hp": max_hp, "orbs": orbs, "orbs_total": orbs_total, "double": has_double, "dash": has_dash,
+		"memories": memories, "flags": flags, "cx": checkpoint.x, "cy": checkpoint.y, "boss": boss_down,
+		"deaths": deaths, "playtime": playtime}
+	var f := FileAccess.open(SAVE, FileAccess.WRITE)
+	f.store_string(JSON.stringify(d))
+
+
+func load_game() -> bool:
+	if not has_save(): return false
+	var d = JSON.parse_string(FileAccess.open(SAVE, FileAccess.READ).get_as_text())
+	if typeof(d) != TYPE_DICTIONARY: return false
+	max_hp = int(d.max_hp); hp = max_hp; orbs = int(d.orbs); orbs_total = int(d.get("orbs_total", 0))
+	has_double = d.double; has_dash = d.dash
+	memories = []
+	for m in d.memories: memories.append(int(m))
+	flags = d.flags; checkpoint = Vector2(d.cx, d.cy); boss_down = d.boss
+	deaths = int(d.get("deaths", 0)); playtime = float(d.get("playtime", 0.0))
+	return true
+
+
+# ── 입력: 키보드 + 게임패드 (Steam Deck 포함) ──
+
+func _key(action: String, keys: Array, pads: Array = [], mouse: Array = []) -> void:
+	if not InputMap.has_action(action): InputMap.add_action(action, 0.3)
+	for k in keys:
+		var e := InputEventKey.new()
+		e.physical_keycode = k
+		InputMap.action_add_event(action, e)
+	for b in pads:
+		var e := InputEventJoypadButton.new()
+		e.button_index = b
+		InputMap.action_add_event(action, e)
+	for m in mouse:
+		var e := InputEventMouseButton.new()
+		e.button_index = m
+		InputMap.action_add_event(action, e)
+
+
+func _axis(action: String, axis: int, dir: float) -> void:
+	var e := InputEventJoypadMotion.new()
+	e.axis = axis
+	e.axis_value = dir
+	InputMap.action_add_event(action, e)
+
+
+func _setup_input() -> void:
+	_key("left", [KEY_A, KEY_LEFT], [JOY_BUTTON_DPAD_LEFT])
+	_key("right", [KEY_D, KEY_RIGHT], [JOY_BUTTON_DPAD_RIGHT])
+	_key("up", [KEY_W, KEY_UP], [JOY_BUTTON_DPAD_UP])
+	_key("down", [KEY_S, KEY_DOWN], [JOY_BUTTON_DPAD_DOWN])
+	_axis("left", JOY_AXIS_LEFT_X, -1.0)
+	_axis("right", JOY_AXIS_LEFT_X, 1.0)
+	_axis("up", JOY_AXIS_LEFT_Y, -1.0)
+	_axis("down", JOY_AXIS_LEFT_Y, 1.0)
+	_key("jump", [KEY_SPACE, KEY_Z, KEY_K], [JOY_BUTTON_A])
+	_key("attack", [KEY_X, KEY_J], [JOY_BUTTON_X], [MOUSE_BUTTON_LEFT])
+	_key("dash", [KEY_C, KEY_SHIFT, KEY_L], [JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_B], [MOUSE_BUTTON_RIGHT])
+	_key("interact", [KEY_E, KEY_ENTER], [JOY_BUTTON_Y])
+	_key("pause", [KEY_ESCAPE], [JOY_BUTTON_START])
