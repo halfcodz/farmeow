@@ -11,13 +11,13 @@ func _ready() -> void:
 	main.hud._select_tool("crop", "carrot")
 	await _w(10)
 	_shot("11_tool")
-	Game.sim.plant(Sim._i(4, 2), "carrot")
-	Game.sim.plant(Sim._i(2, 4), "carrot")
-	Game.sim.s.tiles[Sim._i(4, 2)].prog = 100.0
+	Game.sim.plant(Sim._i(5, 3), "carrot")
+	Game.sim.plant(Sim._i(3, 5), "carrot")
+	Game.sim.s.tiles[Sim._i(5, 3)].prog = 100.0
 	main.hud._select_tool("crop", "carrot")
 	await _w(20)
 	_shot("12_ripe")
-	Game.sim.harvest(Sim._i(4, 2))
+	Game.sim.harvest(Sim._i(5, 3))
 	await _w(8)
 	_shot("13_harvest")
 	get_tree().quit()

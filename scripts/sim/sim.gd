@@ -7,6 +7,10 @@ extends RefCounted
 signal event(kind: String, data: Dictionary)
 
 const TICK := 1.0 / 20.0
+const G := 11            # 밭 한 변 (넓힌 농장)
+const C := 5             # 중앙 칸
+const N := G * G
+const CF := C + 0.5      # 중앙 좌표
 const SAVE_VERSION := 2
 
 var s: Dictionary = {}
@@ -48,7 +52,7 @@ var last_result: Dictionary = {}
 func new_game(difficulty: String = "normal", keep: Dictionary = {}) -> void:
 	_rng.randomize()
 	var tiles := []
-	for i in 81:
+	for i in N:
 		tiles.append({"open": false, "kind": "", "id": "", "prog": 0.0, "stars": 0, "hp": 0.0, "wilted": false, "plan": ""})
 	s = {
 		"version": SAVE_VERSION, "difficulty": difficulty,
@@ -64,7 +68,7 @@ func new_game(difficulty: String = "normal", keep: Dictionary = {}) -> void:
 	}
 	if not keep.is_empty():
 		for k in keep: s[k] = keep[k]
-	for i in [_i(4, 2), _i(4, 6), _i(2, 4), _i(6, 4), _i(4, 0), _i(4, 8), _i(0, 4), _i(8, 4)]:
+	for i in [_i(C, C - 2), _i(C, C + 2), _i(C - 2, C), _i(C + 2, C), _i(C, 0), _i(C, G - 1), _i(0, C), _i(G - 1, C)]:
 		s.tiles[i].open = true
 	_add_cat("farmer", 0, 1, "나비")
 	_reset_goals()
@@ -73,6 +77,14 @@ func new_game(difficulty: String = "normal", keep: Dictionary = {}) -> void:
 
 func load_state(d: Dictionary) -> void:
 	s = d
+	# 9x9 시절 저장 → 11x11 가운데로 옮긴다
+	if s.tiles.size() == 81:
+		var nt := []
+		for i in N:
+			nt.append({"open": false, "kind": "", "id": "", "prog": 0.0, "stars": 0, "hp": 0.0, "wilted": false, "plan": ""})
+		for i in 81:
+			nt[_i(i % 9 + 1, i / 9 + 1)] = s.tiles[i]
+		s.tiles = nt
 	_rng.randomize()
 	if s.phase == "night" or s.phase == "dusk":
 		s.phase = "dusk"   # 밤은 처음부터 다시
@@ -83,15 +95,15 @@ func load_state(d: Dictionary) -> void:
 
 
 static func _i(x: int, y: int) -> int:
-	return y * 9 + x
+	return y * G + x
 
 
 static func tx(i: int) -> int:
-	return i % 9
+	return i % G
 
 
 static func ty(i: int) -> int:
-	return i / 9
+	return i / G
 
 
 func emit(kind: String, data: Dictionary = {}) -> void:
@@ -200,7 +212,7 @@ func zone_open_day(zone: String) -> int:
 
 func unlocked_in_zone(zone: String) -> int:
 	var n := 0
-	for i in 81:
+	for i in N:
 		if s.tiles[i].open and Data.zone_of(tx(i), ty(i)) == zone: n += 1
 	return n
 
@@ -240,7 +252,7 @@ func unlock_tile(i: int) -> bool:
 
 
 func _zone_name(z: String) -> String:
-	return {"A": "안쪽 밭(링 A)", "B": "겸용 링(링 B)", "C": "방어선(링 C)"}.get(z, z)
+	return {"A": "안쪽 밭", "B": "가운데 밭", "C": "바깥 밭", "D": "들판 끝"}.get(z, z)
 
 
 func can_build_now() -> bool:
@@ -390,7 +402,7 @@ func harvest(i: int, by_cat: bool = false) -> bool:
 
 func harvest_all() -> int:
 	var n := 0
-	for i in 81:
+	for i in N:
 		if harvest(i, true): n += 1
 	if n == 0: toast("다 자란 작물이 없어요")
 	return n
@@ -569,9 +581,9 @@ func _sync_cats() -> void:
 			cat_rt.erase(c.uid)
 			continue
 		if not cat_rt.has(c.uid):
-			cat_rt[c.uid] = {"pos": Vector2(4.5 + _rng.randf_range(-0.8, 0.8), 4.5 + _rng.randf_range(-0.8, 0.8)),
+			cat_rt[c.uid] = {"pos": Vector2(CF + _rng.randf_range(-0.8, 0.8), CF + _rng.randf_range(-0.8, 0.8)),
 				"task": "idle", "target": -1, "t": 0.0, "cd": 0.0, "stack": 0, "anim": "idle", "flip": false,
-				"post": Vector2(4.5, 4.5), "wander": 0.0, "act": 0.0}
+				"post": Vector2(CF, CF), "wander": 0.0, "act": 0.0}
 
 
 # ═════════════════════════════════════════════════════════
@@ -818,7 +830,7 @@ func _enter_night() -> void:
 	if int(s.day) >= 3 and (_rng.randf() < 0.22 or pk("goldrain") > 0):
 		golden_at = float(plan.duration) * _rng.randf_range(0.2, 0.6)
 	house_hp = house_max
-	for i in 81:
+	for i in N:
 		var t: Dictionary = s.tiles[i]
 		if t.kind == "turret":
 			t.hp = turret_max_hp(t)
@@ -843,7 +855,7 @@ func _enter_dawn(failed: bool) -> void:
 		s.coins -= loss
 		res.coin_loss = loss
 		var crops := []
-		for i in 81:
+		for i in N:
 			if s.tiles[i].kind == "crop": crops.append(i)
 		crops.shuffle()
 		for k in crops.size() / 2:
@@ -886,7 +898,7 @@ func _enter_dawn(failed: bool) -> void:
 			else:
 				c.nurse_cd = int(c.nurse_cd) - 1
 	res.dead = _flush_dead()
-	for i in 81:
+	for i in N:
 		var t: Dictionary = s.tiles[i]
 		if t.kind == "turret":
 			t.wilted = false
@@ -942,7 +954,7 @@ func _tick_growth(dt: float) -> void:
 	for c in s.cats:
 		if c.alive and c.job == "sprinkler" and cat_rt.has(c.uid):
 			sprinklers.append(cat_rt[c.uid].pos)
-	for i in 81:
+	for i in N:
 		var t: Dictionary = s.tiles[i]
 		if t.kind == "crop":
 			var m := 1.0
@@ -989,14 +1001,14 @@ func _tick_economy(dt: float) -> void:
 	if _auto_t <= 0.0:
 		_auto_t = 1.5
 		if s.toggles.auto_plant:
-			for i in 81:
+			for i in N:
 				var t: Dictionary = s.tiles[i]
 				if t.open and t.kind == "" and t.plan != "" and s.coins >= float(Data.crop_by_id[t.plan].seedCost) * 2:
 					plant(i, t.plan, true)
 		if s.toggles.auto_reclaim:
 			var best := -1
 			var best_cost := INF
-			for i in 81:
+			for i in N:
 				var c := unlock_cost(i)
 				if c > 0 and float(c) < best_cost:
 					best_cost = c; best = i
@@ -1040,7 +1052,7 @@ func _tick_day_cats(dt: float) -> void:
 		if float(j.work) >= 0.5 and c.job in ["farmer", "merchant", "chef"]:
 			var best := -1
 			var bd := INF
-			for i in 81:
+			for i in N:
 				if reserved.has(i): continue
 				if crop_ripe(s.tiles[i]):
 					var d := (rt.pos as Vector2).distance_to(Vector2(tx(i) + 0.5, ty(i) + 0.5))
@@ -1052,16 +1064,16 @@ func _tick_day_cats(dt: float) -> void:
 				continue
 		if float(rt.wander) <= 0.0:
 			rt.wander = _rng.randf_range(2.0, 5.0)
-			var goal := Vector2(4.5, 4.5)
+			var goal := Vector2(CF, CF)
 			if c.job == "sprinkler":
 				var crops := []
-				for i in 81:
+				for i in N:
 					if s.tiles[i].kind == "crop": crops.append(i)
 				if crops.size() > 0:
 					var ci: int = crops[_rng.randi() % crops.size()]
 					goal = Vector2(tx(ci) + 0.5, ty(ci) + 0.8)
 			else:
-				goal = Vector2(_rng.randf_range(2.6, 6.4), _rng.randf_range(2.6, 6.4))
+				goal = Vector2(_rng.randf_range(CF - 2.4, CF + 2.4), _rng.randf_range(CF - 2.4, CF + 2.4))
 			rt.task = "walk"; rt.goal = goal
 
 
@@ -1082,15 +1094,15 @@ func _walk(rt: Dictionary, goal: Vector2, speed: float, dt: float) -> bool:
 # ═════════════════════════════════════════════════════════
 
 const DIR_VEC := {"N": Vector2(0, 1), "S": Vector2(0, -1), "W": Vector2(1, 0), "E": Vector2(-1, 0)}
-const GATE_POS := {"N": Vector2(4.5, 1.5), "S": Vector2(4.5, 7.5), "W": Vector2(1.5, 4.5), "E": Vector2(7.5, 4.5)}
+const GATE_POS := {"N": Vector2(CF, CF - 3.0), "S": Vector2(CF, CF + 3.0), "W": Vector2(CF - 3.0, CF), "E": Vector2(CF + 3.0, CF)}
 
 
 func _spawn_pos(dir: String, lane: int) -> Vector2:
 	match dir:
 		"N": return Vector2(lane + 0.5, -1.5)
-		"S": return Vector2(lane + 0.5, 10.5)
+		"S": return Vector2(lane + 0.5, G + 1.5)
 		"W": return Vector2(-1.5, lane + 0.5)
-		_: return Vector2(10.5, lane + 0.5)
+		_: return Vector2(G + 1.5, lane + 0.5)
 
 
 func _place_night_cats() -> void:
@@ -1105,7 +1117,7 @@ func _place_night_cats() -> void:
 		rt.cd = 0.0; rt.stack = 0; rt.task = "night"; rt.target = -1
 		c.hp = cat_max_hp(c)
 		if not is_combat(c):
-			rt.post = Vector2(4.5 + _rng.randf_range(-0.6, 0.6), 4.5 + _rng.randf_range(-0.4, 0.4))
+			rt.post = Vector2(CF + _rng.randf_range(-0.6, 0.6), CF + _rng.randf_range(-0.4, 0.4))
 			continue
 		var d: String = c.assign if c.assign != "free" else top
 		rt.dir = d
@@ -1129,11 +1141,11 @@ func _tick_night(dt: float) -> void:
 	while spawn_i < plan.spawns.size() and float(plan.spawns[spawn_i][0]) <= t:
 		var sp: Array = plan.spawns[spawn_i]
 		spawn_i += 1
-		_spawn(sp[3], sp[1], int(sp[2]), float(sp[4]) * dm)
+		_spawn(sp[3], sp[1], int(sp[2]) - 4 + C, float(sp[4]) * dm)
 	if golden_at >= 0.0 and t >= golden_at:
 		golden_at = -1.0
 		var gd: String = Data.DIRS[_rng.randi() % 4]
-		var gz := _spawn("hare", gd, 4, float(plan.dmgRef) * 60.0 * dm + 30.0)
+		var gz := _spawn("hare", gd, C, float(plan.dmgRef) * 60.0 * dm + 30.0)
 		gz["golden"] = true
 		gz.speed = float(gz.speed) * 0.8
 		emit("golden", {"dir": gd})
@@ -1190,7 +1202,7 @@ func early_grace(n: int) -> float:
 func burrowed(z: Dictionary) -> bool:
 	if not z.burrow: return false
 	var p: Vector2 = z.pos
-	return maxf(absf(p.x - 4.5), absf(p.y - 4.5)) > 3.5
+	return maxf(absf(p.x - CF), absf(p.y - CF)) > 3.5
 
 
 func _tick_free_cats(dt: float) -> void:
@@ -1261,7 +1273,7 @@ func _tick_zombies(dt: float) -> void:
 				if not cat.is_empty():
 					mv = ((cat_rt[cat.uid].pos as Vector2) - (z.pos as Vector2)).normalized()
 			var p: Vector2 = z.pos
-			if maxf(absf(p.x - 4.5), absf(p.y - 4.5)) <= 1.95 + (0.3 if int(z.size) == 2 else 0.0):
+			if maxf(absf(p.x - CF), absf(p.y - CF)) <= 1.95 + (0.3 if int(z.size) == 2 else 0.0):
 				# 본진 도착
 				if float(z.atk_cd) <= 0.0:
 					z.atk_cd = 1.0 / float(d.atkSpeed)
@@ -1288,7 +1300,7 @@ func _walls_near(p: Vector2, r: float) -> Array:
 	var cy := int(p.y)
 	for y in range(cy - 1, cy + 2):
 		for x in range(cx - 1, cx + 2):
-			if x < 0 or y < 0 or x > 8 or y > 8: continue
+			if x < 0 or y < 0 or x > G - 1 or y > G - 1: continue
 			var t: Dictionary = s.tiles[_i(x, y)]
 			if t.kind == "turret" and not t.wilted and turret_ready(t) and Data.def_by_id[t.id].kind == "wall":
 				if p.distance_to(Vector2(x + 0.5, y + 0.5)) <= r: out.append(_i(x, y))
@@ -1313,7 +1325,7 @@ func _find_blocker(z: Dictionary, d: Dictionary) -> Dictionary:
 	var ahead: Vector2 = p + (z.v as Vector2) * (0.55 if int(z.size) == 1 else 0.85)
 	var x := int(floor(ahead.x))
 	var y := int(floor(ahead.y))
-	if x < 0 or y < 0 or x > 8 or y > 8: return {}
+	if x < 0 or y < 0 or x > G - 1 or y > G - 1: return {}
 	var i := _i(x, y)
 	var t: Dictionary = s.tiles[i]
 	if t.kind == "turret" and not t.wilted and turret_ready(t):
@@ -1342,21 +1354,21 @@ func _boss_special(z: Dictionary, d: Dictionary, dt: float, dmg_ref: float) -> v
 			emit("fx", {"k": "slam", "pos": z.pos})
 			emit("shake", {"amount": 5.0})
 			emit("sfx", {"name": "bigboom"})
-			for i in 81:
+			for i in N:
 				var t: Dictionary = s.tiles[i]
 				if t.kind == "turret" and not t.wilted and (z.pos as Vector2).distance_to(Vector2(tx(i) + 0.5, ty(i) + 0.5)) < 1.6:
 					_damage_turret(i, turret_max_hp(t) * 0.5, z)
 		"bossPumpkin":
 			z.special = 5.0
 			for k in 2:
-				var m := _spawn("rat", z.dir, 3 + _rng.randi() % 3, float(z.max) * 0.02)
+				var m := _spawn("rat", z.dir, C - 1 + _rng.randi() % 3, float(z.max) * 0.02)
 				m.pos = (z.pos as Vector2) + Vector2(_rng.randf_range(-0.5, 0.5), _rng.randf_range(-0.5, 0.5))
 			emit("sfx", {"name": "zgrowl"})
 		"bossChicken":
 			z.special = 3.0
 			var best := -1
 			var bd := 4.5
-			for i in 81:
+			for i in N:
 				var t: Dictionary = s.tiles[i]
 				if t.kind == "turret" and not t.wilted:
 					var dd := (z.pos as Vector2).distance_to(Vector2(tx(i) + 0.5, ty(i) + 0.5))
@@ -1475,7 +1487,7 @@ func _kill(z: Dictionary) -> void:
 		emit("fx", {"k": "boom", "pos": z.pos, "r": float(d.explode)})
 		emit("sfx", {"name": "boom"})
 		var dmg := float(plan.dmgRef) * 8.0 * float(diff().dmg)
-		for i in 81:
+		for i in N:
 			var t: Dictionary = s.tiles[i]
 			if t.kind == "turret" and (z.pos as Vector2).distance_to(Vector2(tx(i) + 0.5, ty(i) + 0.5)) <= float(d.explode):
 				_damage_turret(i, dmg, {})
@@ -1518,18 +1530,18 @@ func _tick_turrets(dt: float) -> void:
 	var rate_mul := 1.0 + 0.1 * pk("trate") + 0.35 * pk("overclock")
 	# 해바라기 오라
 	var aura := {}
-	for i in 81:
+	for i in N:
 		var t: Dictionary = s.tiles[i]
 		if t.kind == "turret" and not t.wilted and turret_ready(t) and Data.def_by_id[t.id].kind == "support":
 			var d: Dictionary = Data.def_by_id[t.id]
 			var r := float(d.auraRange)
-			for j in 81:
+			for j in N:
 				if Vector2(tx(i), ty(i)).distance_to(Vector2(tx(j), ty(j))) <= r:
 					aura[j] = maxf(float(aura.get(j, 0.0)), float(d.fireRateAura) * Data.star_mul(int(t.stars)))
 			var coin := float(d.get("coinPerSec", 0)) * dt * (1 + int(t.stars)) * maxf(1.0, s.day * 0.5)
 			_earn(coin)
 			night_coins += coin
-	for i in 81:
+	for i in N:
 		var t: Dictionary = s.tiles[i]
 		if t.kind != "turret" or t.wilted or not turret_ready(t): continue
 		var d: Dictionary = Data.def_by_id[t.id]
@@ -1578,7 +1590,7 @@ func _pick_target(center: Vector2, rng: float, anti_air: bool) -> Dictionary:
 	for z in zombies:
 		if not _targetable(z, anti_air): continue
 		if (z.pos as Vector2).distance_to(center) > rng: continue
-		var hd := (z.pos as Vector2).distance_to(Vector2(4.5, 4.5))
+		var hd := (z.pos as Vector2).distance_to(Vector2(CF, CF))
 		if z.type == "shaman": hd -= 2.0
 		if hd < bd:
 			bd = hd; best = z
@@ -1767,7 +1779,7 @@ func _tick_night_cats(dt: float) -> void:
 				_walk(rt, rt.post, float(j.moveSpeed), dt)
 				if float(rt.cd) <= 0.0:
 					rt.cd = 7.0
-					for i in 81:
+					for i in N:
 						var t: Dictionary = s.tiles[i]
 						if t.kind == "turret" and t.wilted and p.distance_to(Vector2(tx(i) + 0.5, ty(i) + 0.5)) <= 3.5:
 							t.wilted = false
@@ -2043,18 +2055,18 @@ func guide() -> Dictionary:
 	if s.phase == "night": return {}
 	# 1) 익은 작물
 	if harvested < 6:
-		for i in 81:
+		for i in N:
 			if crop_ripe(s.tiles[i]): return {"tile": i}
 	# 2) 첫 씨앗
 	if harvested < 3 and _count_kind("crop") == 0:
-		for i in 81:
+		for i in N:
 			var t: Dictionary = s.tiles[i]
 			if t.open and t.kind == "" and Data.zone_of(tx(i), ty(i)) == "A": return {"tile": i, "tool": "crop"}
 	# 3) 첫 판매
 	if float(s.coins) < 20 and storage_used() > 0 and revealed("shop"): return {"ui": "shop"}
 	# 4) 첫 방어작물 — 길목 위
 	if revealed("defense") and _count_kind("turret") < 2 and float(s.coins) >= 18:
-		for i in [_i(4, 0), _i(4, 8), _i(0, 4), _i(8, 4)]:
+		for i in [_i(C, 0), _i(C, G - 1), _i(0, C), _i(G - 1, C)]:
 			if s.tiles[i].open and s.tiles[i].kind == "": return {"tile": i, "tool": "turret"}
 	# 5) 첫 전투 고양이
 	if revealed("cats") and count_job("sword") == 0 and job_unlocked("sword") and float(s.coins) >= Data.hire_cost(Data.job_by_id.sword, alive_cats().size()):
@@ -2063,7 +2075,7 @@ func guide() -> Dictionary:
 	if open_tiles() < 14 and s.phase == "day":
 		var best := -1
 		var bc := INF
-		for i in 81:
+		for i in N:
 			var c := unlock_cost(i)
 			if c > 0 and float(c) <= float(s.coins) and c < bc:
 				bc = c; best = i

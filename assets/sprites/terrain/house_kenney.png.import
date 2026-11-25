@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://v5m0t6ylt08x"
-path="res://.godot/imported/fence_v.png-5952e08fd055da50e84a49f10b0791d1.ctex"
+uid="uid://cy2git5erpogl"
+path="res://.godot/imported/house_kenney.png-2c7bb23dfa43955e69201599591da530.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/sprites/terrain/fence_v.png"
-dest_files=["res://.godot/imported/fence_v.png-5952e08fd055da50e84a49f10b0791d1.ctex"]
+source_file="res://assets/sprites/terrain/house_kenney.png"
+dest_files=["res://.godot/imported/house_kenney.png-2c7bb23dfa43955e69201599591da530.ctex"]
 
 [params]
 

@@ -70,7 +70,7 @@ func _play(sim: Sim) -> void:
 		if have >= want_turrets: break
 		var x := Sim.tx(i); var y := Sim.ty(i)
 		var z := Data.zone_of(x, y)
-		if (z == "C" or z == "B") and sim.s.tiles[i].open and sim.s.tiles[i].kind == "":
+		if (z == "C" or z == "B" or z == "D") and sim.s.tiles[i].open and sim.s.tiles[i].kind == "":
 			if sim.build(i, best_def): have += 1
 	# 낡은 포탑 교체
 	for i in 81:

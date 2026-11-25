@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b7gvjunrefild"
-path="res://.godot/imported/fence_h.png-1a89b592e13603cdb0df60f6ceb80de0.ctex"
+uid="uid://bpjevii7ls3hd"
+path="res://.godot/imported/plots.png-4273e85b835ccca5efa3fe8cd27a335f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/sprites/terrain/fence_h.png"
-dest_files=["res://.godot/imported/fence_h.png-1a89b592e13603cdb0df60f6ceb80de0.ctex"]
+source_file="res://assets/sprites/terrain/plots.png"
+dest_files=["res://.godot/imported/plots.png-4273e85b835ccca5efa3fe8cd27a335f.ctex"]
 
 [params]
 

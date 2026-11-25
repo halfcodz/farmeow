@@ -8,7 +8,9 @@ signal tile_hovered(i: int)
 const T := 16
 const WX := 61
 const WY := 37
-const OFF := Vector2(26, 14)     # 밭 (0,0) 칸의 월드 칸 좌표
+const OFF := Vector2(25, 13)     # 밭 (0,0) 칸의 월드 칸 좌표 (11x11 밭이 월드 한가운데)
+const G := Sim.G
+const CF := Sim.CF
 
 ## 원작 도트 대신 Kenney Tiny Farm 성장 단계를 쓰는 작물 (환경 에셋과 톤 맞춤)
 const KENNEY_CROP := {"carrot": [4, 5, 5, 6], "cabbage": [52, 53, 53, 54], "corn": [28, 29, 29, 30], "tomato": [40, 41, 41, 42]}
@@ -35,7 +37,7 @@ var _rng := RandomNumberGenerator.new()
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_rng.seed = 11
-	for i in 81: _grass_var.append(_rng.randi() % 100)
+	for i in Sim.N: _grass_var.append(_rng.randi() % 100)
 	_bake_ground()
 	var kinds := [[120, "sheep"], [121, "cow"], [122, "chicken"], [122, "chicken"], [0, "chick"], [0, "chick"], [121, "cow"], [120, "sheep"]]
 	for k in kinds:
@@ -46,7 +48,7 @@ func _ready() -> void:
 
 
 func field_center_px() -> Vector2:
-	return (OFF + Vector2(4.5, 4.5)) * T
+	return (OFF + Vector2(CF, CF)) * T
 
 
 func world_size_px() -> Vector2:
@@ -66,7 +68,7 @@ func _tc(i: int) -> Vector2:
 
 
 func _pasture_spot() -> Vector2:
-	var zones := [Rect2(OFF.x + 11, OFF.y + 0.5, 4, 2), Rect2(OFF.x - 7, OFF.y + 10, 5, 3), Rect2(OFF.x - 6, OFF.y - 4, 4, 2), Rect2(OFF.x + 11, OFF.y + 10, 4, 3)]
+	var zones := [Rect2(OFF.x + G + 1, OFF.y + 1, 4, 2), Rect2(OFF.x - 6, OFF.y + G, 5, 3), Rect2(OFF.x - 6, OFF.y - 3, 4, 2), Rect2(OFF.x + G + 1, OFF.y + G, 4, 3)]
 	var z: Rect2 = zones[_rng.randi() % zones.size()]
 	return (z.position + Vector2(_rng.randf() * z.size.x, _rng.randf() * z.size.y)) * T
 
@@ -102,21 +104,21 @@ func _bake_ground() -> void:
 		for x in WX:
 			var lx := x - fx0
 			var ly := y - fy0
-			if lx >= -1 and ly >= -1 and lx <= 9 and ly <= 9: continue
-			if lx >= 3 and lx <= 5 and (ly < -1 or ly > 9):
-				put.call(town, [24, 25, 26][lx - 3], 12, x, y, false)
+			if lx >= 0 and ly >= 0 and lx < G and ly < G: continue
+			if absi(lx - Sim.C) <= 1 and (ly < 0 or ly >= G):
+				put.call(town, [24, 25, 26][lx - Sim.C + 1], 12, x, y, false)
 				occupied[Vector2i(x, y)] = true
-			elif ly >= 3 and ly <= 5 and (lx < -1 or lx > 9):
-				put.call(town, [13, 25, 37][ly - 3], 12, x, y, false)
+			elif absi(ly - Sim.C) <= 1 and (lx < 0 or lx >= G):
+				put.call(town, [13, 25, 37][ly - Sim.C + 1], 12, x, y, false)
 				occupied[Vector2i(x, y)] = true
-	for y in range(fy0 - 5, fy0 + 14):
-		for x in range(fx0 - 8, fx0 + 17):
+	for y in range(fy0 - 4, fy0 + G + 4):
+		for x in range(fx0 - 7, fx0 + G + 7):
 			occupied[Vector2i(x, y)] = true
 	var barn := [[90, 91, 92], [102, 103, 104], [114, 115, 116]]
 	for yy in 3:
 		for xx in 3:
-			put.call(farm, barn[yy][xx], 12, fx0 + 12 + xx, fy0 - 4 + yy, true)
-	for d in [[96, 15, -2], [97, 16, -2], [85, 11, -2], [74, 16, -1], [72, -3, -2], [73, -2, -2], [83, -4, 11], [83, -3, 12], [98, 12, 11], [99, 13, 11], [84, -5, -1], [86, 11, 12], [89, -6, 0], [77, 14, 12]]:
+			put.call(farm, barn[yy][xx], 12, fx0 + G + 2 + xx, fy0 - 3 + yy, true)
+	for d in [[96, G + 5, -1], [97, G + 6, -1], [85, G + 1, -1], [74, G + 6, 0], [72, -3, -2], [73, -2, -2], [83, -4, G + 1], [83, -3, G + 2], [98, G + 2, G + 1], [99, G + 3, G + 1], [84, -5, -1], [86, G + 1, G + 2], [89, -6, 0], [77, G + 4, G + 2]]:
 		put.call(farm, d[0], 12, fx0 + d[1], fy0 + d[2], true)
 	for k in 4:
 		for tries in 40:
@@ -136,10 +138,10 @@ func _bake_ground() -> void:
 	for y in WY:
 		for x in WX:
 			if occupied.has(Vector2i(x, y)): continue
-			var dx := (x - (fx0 + 4.5)) / 1.6
-			var dy := float(y - (fy0 + 4.5))
+			var dx := (x - (fx0 + CF)) / 1.6
+			var dy := float(y - (fy0 + CF))
 			var dist := sqrt(dx * dx + dy * dy)
-			var p := clampf((dist - 8.0) / 10.0, 0.0, 0.85)
+			var p := clampf((dist - 9.0) / 10.0, 0.0, 0.85)
 			var r := _rng.randf()
 			if r < p * 0.75:
 				put.call(town, trees[_rng.randi() % trees.size()], 12, x, y, true)
@@ -158,8 +160,8 @@ func tile_at(local: Vector2) -> int:
 	var c := local / T - OFF
 	var x := int(floor(c.x))
 	var y := int(floor(c.y))
-	if x < 0 or y < 0 or x > 8 or y > 8: return -1
-	return y * 9 + x
+	if x < 0 or y < 0 or x >= G or y >= G: return -1
+	return y * G + x
 
 
 func cat_at(local: Vector2) -> Dictionary:
@@ -223,7 +225,7 @@ func on_event(kind: String, d: Dictionary) -> void:
 					_text(_tc(d.i) + Vector2(0, -8), d.text, Color("#9ef07a"))
 				"househit":
 					_house_flash = 0.15
-					_burst(fpos(Vector2(4.5, 4.5)), 3, Color("#c9a27a"), 30, 0.4)
+					_burst(fpos(Vector2(CF, CF)), 3, Color("#c9a27a"), 30, 0.4)
 				"wilt":
 					_burst(_tc(d.i), 8, Color("#6b5a3a"), 30, 0.5)
 				"thit":
@@ -242,7 +244,7 @@ func on_event(kind: String, d: Dictionary) -> void:
 					if d.k == "boom": _burst(fpos(pos), 10, col, 50, 0.4, 1.5)
 					if d.k == "freeze": Sound.play("freeze", 0.1, -6.0)
 				"coins":
-					_text(fpos(Vector2(4.5, 3.2)), "+" + Data.fmt(d.v), Color("#ffd447"), 8, 1.1, Data.town_tile(93))
+					_text(fpos(Vector2(CF, CF - 1.3)), "+" + Data.fmt(d.v), Color("#ffd447"), 8, 1.1, Data.town_tile(93))
 		"hit":
 			var p := fpos(d.pos) + Vector2(0, -6)
 			if d.crit:
@@ -339,7 +341,6 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	if sim == null: return
 	draw_texture(ground, Vector2.ZERO)
-	_draw_fences()
 	_draw_field()
 	_draw_house()
 	_draw_gates()
@@ -355,74 +356,78 @@ func _shadow(p: Vector2, w: float = 5.0) -> void:
 	draw_set_transform(Vector2.ZERO)
 
 
-func _draw_fences() -> void:
-	var fh := Data.t("sprites/terrain/fence_h.png")
-	var fv := Data.t("sprites/terrain/fence_v.png")
-	for k in 9:
-		if k >= 3 and k <= 5: continue
-		draw_texture(fh, (OFF + Vector2(k, -1)) * T + Vector2(0, 8))
-		draw_texture(fh, (OFF + Vector2(k, 9)) * T + Vector2(0, -8))
-		draw_texture(fv, (OFF + Vector2(-1, k)) * T + Vector2(8, 0))
-		draw_texture(fv, (OFF + Vector2(9, k)) * T + Vector2(-8, 0))
-
-
 func crop_tex(id: String, stage: int) -> Texture2D:
 	if KENNEY_CROP.has(id):
 		return Data.farm_tile(KENNEY_CROP[id][clampi(stage, 0, 3)])
 	return Data.crop_stage(id, stage)
 
 
+## 밭: 배경과 같은 Kenney 풀 · 흙길 · 고랑으로 자동 연결 (울타리 없음)
+func _crop_at(x: int, y: int) -> bool:
+	if x < 0 or y < 0 or x >= G or y >= G: return false
+	return sim.s.tiles[y * G + x].kind == "crop"
+
+
+func _path_tile(x: int, y: int) -> int:
+	var dx := x - Sim.C
+	var dy := y - Sim.C
+	if absi(dx) <= 1 and absi(dy) <= 1: return 25
+	if absi(dx) <= 1: return [24, 25, 26][dx + 1]
+	return [13, 25, 37][dy + 1]
+
+
 func _draw_field() -> void:
-	var grass := "sprites/terrain/grass.png"
-	var tilled := Data.t("sprites/terrain/tilled.png")
-	var watered := Data.t("sprites/terrain/watered.png")
-	var gravel := Data.t("sprites/terrain/gravel.png")
-	var sprinklers := []
+	var plots := "sprites/terrain/plots.png"
+	var wet_pos := []
 	for c in sim.s.cats:
-		if c.alive and c.job == "sprinkler" and sim.cat_rt.has(c.uid): sprinklers.append(sim.cat_rt[c.uid].pos)
-	for i in 81:
+		if c.alive and c.job == "sprinkler" and sim.cat_rt.has(c.uid): wet_pos.append(sim.cat_rt[c.uid].pos)
+	for i in Sim.N:
 		var x := Sim.tx(i)
 		var y := Sim.ty(i)
 		var p := _tile_px(i)
 		var t: Dictionary = sim.s.tiles[i]
-		if Data.zone_of(x, y) == "house":
-			draw_texture(Data.frame(grass, _grass_var[i] % 4), p)
-			continue
+		var zone := Data.zone_of(x, y)
+		if zone == "house": continue
+		# 바탕: 배경 풀 위에 길목은 흙길
+		if Data.on_lane(x, y):
+			draw_texture(Data.town_tile(_path_tile(x, y)), p)
 		if not t.open:
-			draw_texture(Data.frame(grass, _grass_var[i] % 4), p)
-			draw_rect(Rect2(p, Vector2(T, T)), Color(0.08, 0.06, 0.12, 0.42))
+			draw_rect(Rect2(p, Vector2(T, T)), Color(0.1, 0.18, 0.08, 0.22))
+			if _grass_var[i] % 5 == 0 and not Data.on_lane(x, y):
+				draw_texture(Data.town_tile(17), p, Color(1, 1, 1, 0.7))
 			var uc := sim.unlock_cost(i)
 			if uc > 0 and hover == i:
 				draw_texture(Data.battle_tile(193), p)
 			elif uc > 0 and sim.s.phase == "day" and float(sim.s.coins) >= uc:
-				draw_rect(Rect2(p + Vector2(7, 7), Vector2(2, 2)), Color(1, 0.85, 0.3, 0.5 + 0.3 * sin(time * 3.0)))
+				draw_rect(Rect2(p + Vector2(7, 7), Vector2(2, 2)), Color(1, 0.9, 0.4, 0.5 + 0.3 * sin(time * 3.0)))
 			continue
 		if t.kind == "crop":
 			var wet := false
-			for sp in sprinklers:
+			for sp in wet_pos:
 				if (sp as Vector2).distance_to(Vector2(x + 0.5, y + 0.5)) <= 2.5: wet = true
-			draw_texture(watered if wet else tilled, p)
-		elif Data.on_lane(x, y):
-			draw_texture(gravel, p)
-		else:
-			draw_texture(Data.frame(grass, _grass_var[i] % 4), p)
-		if t.kind == "crop":
-			var k := clampf(float(t.prog) / sim.crop_grow_time(t.id), 0.0, 1.0)
-			var stage := 3 if k >= 1.0 else int(k * 3.0)
-			var bob := Vector2(0, -1) if k >= 1.0 and fmod(time * 2.0 + i, 2.0) < 1.0 else Vector2.ZERO
+			var up := _crop_at(x, y - 1)
+			var dn := _crop_at(x, y + 1)
+			var k := 3 if not up and not dn else (0 if not up else (2 if not dn else 1))
+			draw_texture(Data.frame(plots, k, 16, 16, 1 if wet else 0), p)
+			var g := clampf(float(t.prog) / sim.crop_grow_time(t.id), 0.0, 1.0)
+			var stage := 3 if g >= 1.0 else int(g * 3.0)
+			var bob := Vector2(0, -1) if g >= 1.0 and fmod(time * 2.0 + i, 2.0) < 1.0 else Vector2.ZERO
 			draw_texture(crop_tex(t.id, stage), p + bob)
-			if k >= 1.0:
+			if g >= 1.0:
 				draw_texture(Data.t("sprites/terrain/sparkle.png"), p + Vector2(0, -2), Color(1, 1, 1, 0.5 + 0.5 * sin(time * 5.0 + i)))
 			else:
-				# 최소 표시: 심은 작물 작은 아이콘 + 얇은 성장 막대
+				# 최소 표시: 무엇을 심었는지 작은 아이콘 + 얇은 성장 막대
 				draw_texture_rect(Data.crop_icon(t.id), Rect2(p + Vector2(11, 0), Vector2(5, 5)), false)
-				draw_rect(Rect2(p + Vector2(2, 15), Vector2(12, 1)), Color(0, 0, 0, 0.35))
-				draw_rect(Rect2(p + Vector2(2, 15), Vector2(12 * k, 1)), Color("#9ef07a"))
+				draw_rect(Rect2(p + Vector2(2, 15), Vector2(12, 1)), Color(0, 0, 0, 0.3))
+				draw_rect(Rect2(p + Vector2(2, 15), Vector2(12 * g, 1)), Color("#9ef07a"))
+		elif t.kind == "" and not Data.on_lane(x, y):
+			# 열린 빈 땅: 아주 옅은 테두리로만 표시
+			draw_rect(Rect2(p + Vector2(1, 1), Vector2(T - 2, T - 2)), Color(1, 1, 0.85, 0.12), false, 1.0)
 
 
 func _draw_house() -> void:
-	var p := fpos(Vector2(3, 3))
-	draw_texture(Data.t("sprites/terrain/house.png"), p, Color(1, 0.6, 0.6) if _house_flash > 0 else Color.WHITE)
+	var p := fpos(Vector2(Sim.C - 1, Sim.C - 1))
+	draw_texture(Data.t("sprites/terrain/house_kenney.png"), p, Color(1, 0.6, 0.6) if _house_flash > 0 else Color.WHITE)
 	if sim.s.phase == "night":
 		var k := clampf(sim.house_hp / maxf(1.0, sim.house_max), 0.0, 1.0)
 		draw_rect(Rect2(p + Vector2(4, -5), Vector2(40, 3)), Color(0, 0, 0, 0.7))
@@ -432,7 +437,7 @@ func _draw_house() -> void:
 ## 사방 좀비 구멍: 황혼·밤에 위협도만큼 붉게 빛난다 (글 대신 빛으로 알려 준다)
 func _draw_gates() -> void:
 	var threat: Dictionary = sim.plan.get("threat", {}) if sim.s.phase in ["dusk", "night"] else {}
-	var gp := {"N": Vector2(4.5, -1.6), "S": Vector2(4.5, 10.6), "W": Vector2(-1.6, 4.5), "E": Vector2(10.6, 4.5)}
+	var gp := {"N": Vector2(CF, -1.6), "S": Vector2(CF, G + 1.6), "W": Vector2(-1.6, CF), "E": Vector2(G + 1.6, CF)}
 	for d in Data.DIRS:
 		var p := fpos(gp[d])
 		var v := float(threat.get(d, 0.0))
@@ -446,7 +451,7 @@ func _draw_gates() -> void:
 
 func _draw_entities() -> void:
 	var list := []
-	for i in 81:
+	for i in Sim.N:
 		if sim.s.tiles[i].kind == "turret":
 			list.append({"y": Sim.ty(i) + 0.9, "k": "turret", "i": i})
 	for c in sim.s.cats:

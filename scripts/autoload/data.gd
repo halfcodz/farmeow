@@ -2,11 +2,11 @@ extends Node
 ## 게임 데이터(JSON)와 텍스처를 한 곳에서 불러온다.
 ## 수치는 원작 냥이농장(meowfarm)의 src/data 를 그대로 내보낸 것이다.
 
-const GRID := 9
-const CENTER := 4
+const GRID := 11
+const CENTER := 5
 const DIRS := ["N", "E", "S", "W"]
 const DIR_NAME := {"N": "북", "E": "동", "S": "남", "W": "서"}
-const LANES := [3, 4, 5]
+const LANES := [4, 5, 6]
 const PHASE_LEN := {"day": 90.0, "dusk": 8.0, "dawn": 6.0}
 const CAT_MAX_LIVES := 9
 const CAT_CAP_BASE := 8
@@ -17,6 +17,7 @@ const ZONE_UNLOCK := {
 	"A": {"day": 1, "base": 45.0, "mult": 1.5},
 	"C": {"day": 1, "base": 90.0, "mult": 1.42},
 	"B": {"day": 6, "base": 700.0, "mult": 1.4},
+	"D": {"day": 8, "base": 1500.0, "mult": 1.3},
 }
 const DIFFICULTY := {
 	"easy": {"name": "느긋하게", "hp": 0.7, "dmg": 0.75, "house": 1.4, "permadeath": false,
@@ -221,11 +222,12 @@ func zone_of(x: int, y: int) -> String:
 	if r <= 1: return "house"
 	if r == 2: return "A"
 	if r == 3: return "B"
-	return "C"
+	if r == 4: return "C"
+	return "D"
 
 
 func on_lane(x: int, y: int) -> bool:
-	return (x >= 3 and x <= 5) or (y >= 3 and y <= 5)
+	return absi(x - CENTER) <= 1 or absi(y - CENTER) <= 1
 
 
 ## 밤 계획. 100일 이후는 61~100을 돌려 쓰며 체력만 키운다 (끝없는 밤).

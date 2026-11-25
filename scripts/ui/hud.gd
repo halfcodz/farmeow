@@ -21,6 +21,9 @@ var _phase_icon: TextureRect
 var _speed_btn: Button
 var _pause_btn: Button
 var _combo_lbl: Label
+var _night_info: HBoxContainer
+var _zcount: Label
+var _house_bar: ProgressBar
 var _hotbar: HBoxContainer
 var _slots := {}
 var _side: VBoxContainer
@@ -42,12 +45,10 @@ func setup(p_sim: Sim, p_world: Node2D, p_cam: Camera2D) -> void:
 	world = p_world
 	cam = p_cam
 	theme = UiTheme.make()
-	set_anchors_preset(Control.PRESET_FULL_RECT)
 	size = Vector2(960, 540)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_top()
 	_build_hotbar()
-	_build_side()
 	_build_overlay()
 	sim.event.connect(_on_event)
 	world.tile_clicked.connect(_on_tile_clicked)
@@ -98,6 +99,18 @@ func _build_top() -> void:
 	_phase_bar.custom_minimum_size = Vector2(150, 4)
 	_phase_bar.show_percentage = false
 	v.add_child(_phase_bar)
+	_night_info = HBoxContainer.new()
+	_night_info.alignment = BoxContainer.ALIGNMENT_CENTER
+	_night_info.add_child(UiTheme.icon(Data.t("sprites/icons/zom_rat.png"), 16))
+	_zcount = UiTheme.label("0", 10, Color("#ffb3a8"), true)
+	_night_info.add_child(_zcount)
+	_night_info.add_child(UiTheme.icon(Data.t("sprites/terrain/house_kenney.png"), 16))
+	_house_bar = ProgressBar.new()
+	_house_bar.custom_minimum_size = Vector2(70, 6)
+	_house_bar.show_percentage = false
+	_house_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_night_info.add_child(_house_bar)
+	v.add_child(_night_info)
 	_combo_lbl = UiTheme.label("", 18, UiTheme.GOLD, true)
 	_combo_lbl.add_theme_constant_override("outline_size", 6)
 	_combo_lbl.add_theme_color_override("font_outline_color", Color("#2b2038"))
@@ -123,21 +136,85 @@ func _icon_btn(parent: Control, text: String, cb: Callable, w: int = 36, tex: Te
 	return b
 
 
+## 아래쪽 도크 하나에 모든 조작을 모은다:
+## [씨앗/방어 전환] [퀵바 9칸] | [상점 고양이 냥슬롯 연구 도감] | [밤 맞이]
+var _group := "crop"
+var _group_btn: Button
+var _dock: PanelContainer
+
+
 func _build_hotbar() -> void:
-	var p := PanelContainer.new()
-	p.add_theme_stylebox_override("panel", UiTheme.flat(Color(0.1, 0.07, 0.15, 0.6), Color(0, 0, 0, 0), 0, 4))
-	add_child(p)
+	_dock = PanelContainer.new()
+	_dock.add_theme_stylebox_override("panel", UiTheme.box(11, 10, 5))
+	add_child(_dock)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 3)
+	_dock.add_child(row)
+	_dock.resized.connect(func(): _dock.position = Vector2(roundf((960 - _dock.size.x) / 2.0), 540 - _dock.size.y - 4))
+	_group_btn = UiTheme.button("", func(): _switch_group(), Data.farm_tile(9), 34)
+	_group_btn.custom_minimum_size = Vector2(34, 44)
+	_group_btn.tooltip_text = "씨앗 ↔ 방어작물 (Tab)"
+	row.add_child(_group_btn)
 	_hotbar = HBoxContainer.new()
 	_hotbar.add_theme_constant_override("separation", 3)
-	p.add_child(_hotbar)
-	p.resized.connect(func(): p.position = Vector2((960 - p.size.x) / 2.0, 540 - p.size.y - 6))
+	row.add_child(_hotbar)
 	for c in Data.crops: _make_slot("crop", c.id, Data.t("sprites/icons/crop_%s.png" % c.id), float(c.seedCost), c.name)
+	for d in Data.defenses: _make_slot("turret", d.id, Data.t("sprites/icons/def_%s.png" % d.id), float(d.cost), d.name)
 	var sep := ColorRect.new()
 	sep.custom_minimum_size = Vector2(2, 40)
-	sep.color = Color(1, 1, 1, 0.2)
+	sep.color = Color(0.25, 0.15, 0.1, 0.6)
 	sep.name = "sep"
-	_hotbar.add_child(sep)
-	for d in Data.defenses: _make_slot("turret", d.id, Data.t("sprites/icons/def_%s.png" % d.id), float(d.cost), d.name)
+	row.add_child(sep)
+	_side = VBoxContainer.new()   # (호환용, 쓰지 않음)
+	var menu := HBoxContainer.new()
+	menu.add_theme_constant_override("separation", 3)
+	row.add_child(menu)
+	var defs := [
+		["shop", Data.farm_tile(74), "상점 (B)", func(): _open_window("shop")],
+		["cats", Data.t("sprites/icons/cat_farmer_0.png"), "고양이 (C)", func(): _open_window("cats")],
+		["slot", Data.t("sprites/icons/crop_rainbow.png"), "냥슬롯", func(): _open_window("slot")],
+		["research", Data.town_tile(104), "연구 (R)", func(): _open_window("research")],
+		["dex", Data.farm_tile(9), "도감", func(): _open_window("dex")],
+		["night", Data.food("blueberries"), "밤 맞이 (N)", func(): _call_night()],
+	]
+	for d in defs:
+		var b := UiTheme.button("", d[3], d[1], 44)
+		b.custom_minimum_size = Vector2(44, 44)
+		b.expand_icon = true
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		b.add_theme_constant_override("icon_max_width", 26)
+		b.tooltip_text = d[2]
+		b.visible = false
+		if d[0] == "night":
+			var sp2 := ColorRect.new()
+			sp2.custom_minimum_size = Vector2(2, 40)
+			sp2.color = Color(0.25, 0.15, 0.1, 0.6)
+			sp2.name = "sep2"
+			menu.add_child(sp2)
+			b.add_theme_stylebox_override("normal", UiTheme.box(3, 8, 3))
+			b.add_theme_stylebox_override("hover", UiTheme.box(3, 8, 3, Color(1.15, 1.1, 1.1)))
+		menu.add_child(b)
+		_side_btns[d[0]] = b
+
+
+func _switch_group() -> void:
+	if not sim.revealed("defense"): return
+	_group = "turret" if _group == "crop" else "crop"
+	_group_btn.icon = Data.farm_tile(9) if _group == "crop" else Data.t("sprites/icons/def_peashoot.png")
+	Sound.play("toggle")
+	_refresh(false)
+
+
+## 지금 그룹에서 보여 줄 슬롯: 해금된 것 중 가장 높은 단계 9개
+func _visible_slots() -> Array:
+	var list := []
+	for id in _slots:
+		var sl: Dictionary = _slots[id]
+		if sl.kind != _group: continue
+		var ok := sim.crop_unlocked(id) if sl.kind == "crop" else (sim.def_unlocked(id) and sim.revealed("defense"))
+		if ok: list.append(id)
+	if list.size() > 9: list = list.slice(list.size() - 9)
+	return list
 
 
 func _make_slot(kind: String, id: String, tex: Texture2D, cost: float, name: String) -> void:
@@ -162,31 +239,6 @@ func _make_slot(kind: String, id: String, tex: Texture2D, cost: float, name: Str
 	_slots[id] = {"b": b, "kind": kind}
 
 
-func _build_side() -> void:
-	_side = VBoxContainer.new()
-	_side.position = Vector2(904, 170)
-	_side.add_theme_constant_override("separation", 4)
-	add_child(_side)
-	var defs := [
-		["night", Data.ui_tile(77), "밤 맞이 (N)", func(): _call_night()],
-		["shop", Data.farm_tile(74), "상점 (B)", func(): _open_window("shop")],
-		["cats", Data.t("sprites/icons/cat_farmer_0.png"), "고양이 (C)", func(): _open_window("cats")],
-		["slot", Data.t("sprites/icons/crop_rainbow.png"), "냥슬롯", func(): _open_window("slot")],
-		["research", Data.town_tile(104), "연구 (R)", func(): _open_window("research")],
-		["dex", Data.farm_tile(9), "도감", func(): _open_window("dex")],
-	]
-	for d in defs:
-		var b := UiTheme.button("", d[3], d[1], 48)
-		b.custom_minimum_size = Vector2(48, 44)
-		b.expand_icon = true
-		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		b.add_theme_constant_override("icon_max_width", 28)
-		b.tooltip_text = d[2]
-		b.visible = false
-		_side.add_child(b)
-		_side_btns[d[0]] = b
-
-
 func _build_overlay() -> void:
 	_bubble = PanelContainer.new()
 	_bubble.add_theme_stylebox_override("panel", UiTheme.flat(Color(0.1, 0.07, 0.15, 0.85), Color(1, 1, 1, 0.2), 1, 3))
@@ -201,7 +253,6 @@ func _build_overlay() -> void:
 	_guide_hand.visible = false
 	add_child(_guide_hand)
 	_flash = ColorRect.new()
-	_flash.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_flash.size = Vector2(960, 540)
 	_flash.color = Color(1, 1, 0.8, 0)
 	_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -230,6 +281,15 @@ func _process(delta: float) -> void:
 	_day_lbl.text = " %d일" % int(s.day)
 	_phase_bar.value = 100.0 * clampf(float(s.t) / maxf(1.0, sim.phase_len()), 0.0, 1.0)
 	_phase_bar.add_theme_stylebox_override("fill", UiTheme.flat(Color({"day": "#ffd447", "dusk": "#ff9a3d", "night": "#7a6cff", "dawn": "#ffb3c1"}.get(s.phase, "#ffffff"))))
+	_night_info.visible = s.phase == "night"
+	if s.phase == "night":
+		var alive := 0
+		for z in sim.zombies:
+			if z.alive: alive += 1
+		_zcount.text = "%d " % (alive + sim.plan.get("spawns", []).size() - sim.spawn_i)
+		var hk := 100.0 * sim.house_hp / maxf(1.0, sim.house_max)
+		_house_bar.value = hk
+		_house_bar.add_theme_stylebox_override("fill", UiTheme.flat(Color("#e8556d") if hk < 35 else Color("#8fd05a")))
 	_speed_btn.text = "▶".repeat(int(s.speed))
 	_speed_btn.visible = sim.revealed("speed")
 	_pause_btn.text = "▶" if Game.paused else "II"
@@ -243,23 +303,36 @@ func _process(delta: float) -> void:
 
 func _refresh(_force: bool) -> void:
 	var s := sim.s
+	var vis := _visible_slots()
 	for id in _slots:
 		var sl: Dictionary = _slots[id]
-		var ok := sim.crop_unlocked(id) if sl.kind == "crop" else (sim.def_unlocked(id) and sim.revealed("defense"))
 		var b: Button = sl.b
+		var ok := vis.has(id)
 		if ok and not b.visible:
 			b.visible = true
-			if _shown.has("hotbar"):
+			var key: String = "slot_" + id
+			if _shown.has("hotbar") and not _shown.has(key):
 				_pop(b, 1.4)
 				Sound.play("reveal")
+			_shown[key] = true
+		elif not ok:
+			b.visible = false
+			if sl.kind == _group: pass
+			elif not _shown.has("slot_" + id) and (sim.crop_unlocked(id) if sl.kind == "crop" else (sim.def_unlocked(id) and sim.revealed("defense"))):
+				_shown["slot_" + id] = true
 		var cost := float(Data.crop_by_id[id].seedCost) if sl.kind == "crop" else float(Data.def_by_id[id].cost)
 		b.modulate = Color(1.0, 0.92, 0.55) if tool.get("id", "") == id else (Color(1, 1, 1) if float(s.coins) >= cost else Color(0.7, 0.7, 0.75))
+	_group_btn.visible = sim.revealed("defense")
 	_shown["hotbar"] = true
-	_hotbar.get_node("sep").visible = sim.revealed("defense")
+	var any_menu := false
+	for k in ["shop", "cats", "slot", "research", "dex"]:
+		if sim.revealed(k): any_menu = true
+	_dock.get_child(0).get_node("sep").visible = any_menu
 	for k in _side_btns:
 		var b: Button = _side_btns[k]
 		var ok := sim.revealed(k)
-		if k == "night": ok = ok and s.phase == "day"
+		if k == "night":
+			b.disabled = s.phase != "day"
 		if ok and not b.visible:
 			b.visible = true
 			if not _shown.has("side_" + k) and k != "night":
@@ -289,6 +362,11 @@ func _update_guide() -> void:
 	if g.has("tool") and tool.is_empty():
 		var id := "carrot" if g.tool == "crop" else "peashoot"
 		world.guide = {}
+		if _slots.has(id) and _slots[id].kind != _group and sim.revealed("defense"):
+			var b2: Button = _group_btn
+			_guide_hand.visible = true
+			_guide_hand.position = b2.global_position + Vector2(4, -34 - bob)
+			return
 		if _slots.has(id) and _slots[id].b.visible:
 			var b: Button = _slots[id].b
 			_guide_hand.visible = true
@@ -299,7 +377,7 @@ func _update_guide() -> void:
 		var b: Button = _side_btns.get(g.ui)
 		if b and b.visible:
 			_guide_hand.visible = true
-			_guide_hand.position = b.global_position + Vector2(-36 - bob, 6)
+			_guide_hand.position = b.global_position + Vector2(6, -34 - bob)
 			return
 	_guide_hand.visible = false
 	world.guide = g if g.has("tile") else {}
@@ -350,6 +428,9 @@ func _update_bubble() -> void:
 # ═════════════════════════════════════════════════════════
 
 func _select_tool(kind: String, id: String) -> void:
+	if kind != _group and sim.revealed("defense"):
+		_group = kind
+		_group_btn.icon = Data.farm_tile(9) if _group == "crop" else Data.t("sprites/icons/def_peashoot.png")
 	tool = {} if tool.get("id", "") == id else {"kind": kind, "id": id}
 	world.tool = tool
 	world.selected = -1
@@ -387,6 +468,7 @@ func _unhandled_key_input(e: InputEvent) -> void:
 		return
 	match e.keycode:
 		KEY_SPACE: _toggle_pause()
+		KEY_TAB: _switch_group()
 		KEY_H: sim.harvest_all()
 		KEY_N: _call_night()
 		KEY_Z:
@@ -407,9 +489,7 @@ func _unhandled_key_input(e: InputEvent) -> void:
 				_open_menu()
 		_:
 			if e.keycode >= KEY_1 and e.keycode <= KEY_9:
-				var vis := []
-				for id in _slots:
-					if _slots[id].b.visible: vis.append(id)
+				var vis := _visible_slots()
 				var idx: int = e.keycode - KEY_1
 				if idx < vis.size(): _select_tool(_slots[vis[idx]].kind, vis[idx])
 			else:
@@ -565,7 +645,6 @@ func _open_window(kind: String) -> void:
 	_close_window()
 	_window_kind = kind
 	var dim := ColorRect.new()
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dim.size = Vector2(960, 540)
 	dim.color = Color(0.05, 0.03, 0.1, 0.35)
 	dim.gui_input.connect(func(ev):
@@ -1044,7 +1123,6 @@ func _next_modal() -> void:
 	_cur_modal = _modal_queue.pop_front()
 	var dim := ColorRect.new()
 	dim.color = Color(0.05, 0.03, 0.1, 0.6)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dim.size = Vector2(960, 540)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
@@ -1267,7 +1345,6 @@ func _open_menu() -> void:
 func _open_settings() -> void:
 	var dim := ColorRect.new()
 	dim.color = Color(0.05, 0.03, 0.1, 0.6)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dim.size = Vector2(960, 540)
 	add_child(dim)
 	Game.modal_pause += 1
