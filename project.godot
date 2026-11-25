@@ -1,0 +1,44 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="Farmeow"
+config/description="냥이농장 — 낮엔 농사, 밤엔 좀비 디펜스"
+config/version="1.0.0"
+run/main_scene="res://scenes/title.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+boot_splash/bg_color=Color(0.105, 0.09, 0.15, 1)
+boot_splash/show_image=false
+config/icon="res://icon.png"
+
+[autoload]
+
+Data="*res://scripts/autoload/data.gd"
+Settings="*res://scripts/autoload/settings.gd"
+Sound="*res://scripts/autoload/sound.gd"
+Game="*res://scripts/autoload/game.gd"
+
+[display]
+
+window/size/viewport_width=960
+window/size/viewport_height=540
+window/size/window_width_override=1920
+window/size/window_height_override=1080
+window/stretch/mode="viewport"
+window/stretch/aspect="keep"
+window/stretch/scale_mode="integer"
+
+[gui]
+
+theme/default_font_antialiasing=0
+theme/default_font_hinting=0
+
+[rendering]
+
+textures/canvas_textures/default_texture_filter=0
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+2d/snap/snap_2d_transforms_to_pixel=true
+2d/snap/snap_2d_vertices_to_pixel=true
+environment/defaults/default_clear_color=Color(0.105, 0.09, 0.15, 1)

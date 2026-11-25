@@ -1,0 +1,8 @@
+# Godot
+.godot/
+*.translation
+build/
+export/
+*.tmp
+.DS_Store
+Thumbs.db
